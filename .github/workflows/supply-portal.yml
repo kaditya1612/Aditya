@@ -1,0 +1,44 @@
+name: Supply portal CI
+on:
+  push:
+    paths: ["supply-tracker/**", ".github/workflows/supply-portal.yml"]
+  pull_request:
+    paths: ["supply-tracker/**"]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: supply-tracker
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: supply-tracker/package-lock.json
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Unit tests
+        run: npm test
+      - name: Database tests (schema, RLS, workflow)
+        run: npm run test:db
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end browser tests
+        run: npm run test:e2e

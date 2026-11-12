@@ -55,7 +55,14 @@ create policy vendors_update on public.vendors for update to authenticated
   using (public.is_active_user()) with check (public.is_active_user());
 
 -- ---------- Tasks ----------
-create policy tasks_read on public.tasks for select to authenticated using (public.can_access_task(id));
+-- Evaluated on the row's own columns (not can_access_task(id)) so INSERT … RETURNING works for leaders.
+create policy tasks_read on public.tasks for select to authenticated using (
+  public.is_manager()
+  or (public.current_app_role() = 'leader' and (
+        created_by = auth.uid() or assigned_by = auth.uid() or public.can_access_employee(owner_id)
+        or exists (select 1 from public.task_assignments a
+                    where a.task_id = tasks.id and a.unassigned_at is null and public.can_access_employee(a.employee_id))))
+);
 create policy tasks_insert on public.tasks for insert to authenticated with check (
   public.is_manager()
   or (public.current_app_role() = 'leader' and owner_id is not null and public.can_access_employee(owner_id))
@@ -80,7 +87,9 @@ create policy requirements_update on public.supply_requirements for update to au
 create policy requirement_history_read on public.requirement_history for select to authenticated using (public.is_active_user());
 
 -- ---------- Costing ----------
-create policy costing_read on public.costing_records for select to authenticated using (public.can_access_costing(id));
+create policy costing_read on public.costing_records for select to authenticated using (
+  public.is_manager() or (public.is_active_user() and (created_by = auth.uid() or public.can_access_employee(assigned_employee_id)))
+);
 create policy costing_insert on public.costing_records for insert to authenticated with check (
   public.is_manager() or (public.is_active_user() and (assigned_employee_id is null or public.can_access_employee(assigned_employee_id)))
 );
@@ -168,6 +177,9 @@ revoke execute on function public.notify(uuid, text, text, text, text, uuid, tex
 revoke execute on function public.notify_managers(text, text, text, text, uuid, text, boolean) from public, anon, authenticated;
 revoke execute on function public.notify_task_stakeholders(uuid, text, text, text, boolean) from public, anon, authenticated;
 revoke execute on function public.apply_deadline_extension(uuid) from public, anon, authenticated;
+grant execute on function public.run_deadline_monitor(), public.generate_recurring_tasks() to service_role;
+grant select, update on public.notifications to service_role;
+grant select on public.notification_settings, public.profiles to service_role;
 
 -- ---------- Views (security_invoker → caller's RLS applies) ----------
 create or replace view public.task_overview with (security_invoker = true) as

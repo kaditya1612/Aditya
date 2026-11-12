@@ -85,6 +85,12 @@ select 'Map Dubai desert safari', c.id, 'high', e.id, now() + interval '2 days',
   from public.task_categories c, public.employees e where c.name = 'Product Mapping' and e.employee_code = 'SUP-001';
 select tests.ok((select status = 'assigned' and task_code like 'TSK-%' and original_due_at = due_at from public.tasks where title = 'Map Dubai desert safari'),
   'task gets auto ID, status Assigned and original deadline');
+create temp table t_ret(code text);
+grant insert, select on t_ret to authenticated;
+with ins as (insert into public.tasks(title, category_id, owner_id)
+    select 'Returning check', c.id, tests.emp('SUP-001') from public.task_categories c where c.name = 'Database Updates'
+    returning task_code) insert into t_ret select task_code from ins;
+select tests.ok((select count(*) = 1 from t_ret), 'leader insert … returning passes the read policy (API create flow)');
 select tests.ok((select count(*) = 1 from public.task_assignments a join public.tasks t on t.id = a.task_id
                  where t.title = 'Map Dubai desert safari' and a.is_owner), 'owner assignment recorded');
 select tests.throws($$insert into public.tasks(title, category_id, owner_id)

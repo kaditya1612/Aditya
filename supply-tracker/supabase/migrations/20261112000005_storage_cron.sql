@@ -37,3 +37,11 @@ begin
     perform cron.schedule('supply-recurring-tasks', '5 0 * * *', 'select public.generate_recurring_tasks()');
   end if;
 end $$;
+
+-- Live notification badge (Realtime respects RLS: users only receive their own rows)
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    execute 'alter publication supabase_realtime add table public.notifications';
+  end if;
+end $$;
